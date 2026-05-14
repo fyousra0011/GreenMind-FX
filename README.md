@@ -1,6 +1,7 @@
 # GreenMind-FX
 
-A minimal, component-driven dashboard built with React, Vite and Tailwind — fast to run and easy to extend.
+Built for UTMxHACKATHON 2026
+A minimal, component-driven dashboard built with React, Vite and Tailwind where it is fast to run and easy to extend.
 
 ## Quick Start
 

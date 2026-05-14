@@ -1,3 +1,6 @@
+# LIVE viewing
+Watch it happen live on your space - https://greenmind-fx-vercel.vercel.app/
+
 # GreenMind-FX
 
 Built for UTMxHACKATHON 2026

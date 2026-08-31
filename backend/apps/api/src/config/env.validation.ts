@@ -3,7 +3,6 @@ import {
   IsBoolean,
   IsEnum,
   IsNumber,
-  IsOptional,
   IsString,
   Max,
   Min,
@@ -18,12 +17,12 @@ export enum Environment {
 
 export class EnvironmentVariables {
   @IsEnum(Environment)
-  NODE_ENV: Environment = Environment.Development;
+  NODE_ENV: Environment;
 
   @IsNumber()
   @Min(1)
   @Max(65535)
-  PORT = 3000;
+  PORT: number;
 
   @IsString()
   APP_NAME: string;
@@ -47,50 +46,61 @@ export class EnvironmentVariables {
   DB_PASSWORD: string;
 
   @IsBoolean()
-  DB_SSL = false;
+  DB_SSL: boolean;
 
   @IsString()
-  @IsOptional()
-  REDIS_HOST?: string;
+  REDIS_HOST: string;
 
   @IsNumber()
-  @IsOptional()
-  REDIS_PORT?: number;
+  REDIS_PORT: number;
 
   @IsString()
-  @IsOptional()
-  REDIS_PASSWORD?: string;
+  REDIS_PASSWORD: string;
 
   @IsNumber()
-  @IsOptional()
-  REDIS_DB?: number;
+  REDIS_DB: number;
 
   @IsString()
-  @IsOptional()
-  MQTT_BROKER_HOST?: string;
+  MQTT_BROKER_HOST: string;
 
   @IsNumber()
-  @IsOptional()
-  MQTT_BROKER_PORT?: number;
+  MQTT_BROKER_PORT: number;
 
   @IsString()
-  @IsOptional()
-  MQTT_BROKER_USERNAME?: string;
+  MQTT_BROKER_USERNAME: string;
 
   @IsString()
-  @IsOptional()
-  MQTT_BROKER_PASSWORD?: string;
+  MQTT_BROKER_PASSWORD: string;
 
   @IsString()
-  @IsOptional()
-  JWT_SECRET?: string;
+  JWT_SECRET: string;
 
   @IsString()
-  @IsOptional()
-  JWT_REFRESH_SECRET?: string;
+  JWT_REFRESH_SECRET: string;
+
+  @IsString()
+  STRIPE_SECRET_KEY: string;
+
+  @IsString()
+  STRIPE_WEBHOOK_SECRET: string;
+
+  @IsString()
+  STRIPE_PUBLISHABLE_KEY: string;
 }
 
 export function validate(config: Record<string, unknown>) {
+  const nodeEnv = String(config.NODE_ENV ?? '').trim().toLowerCase();
+
+  if (!['development', 'staging', 'production'].includes(nodeEnv)) {
+    throw new Error(
+      'NODE_ENV must be explicitly set to one of: development, staging, production',
+    );
+  }
+
+  if (nodeEnv === 'production' && config.DB_SSL !== true) {
+    throw new Error('DB_SSL must be explicitly set to true in production');
+  }
+
   const validatedConfig = plainToInstance(EnvironmentVariables, config, {
     enableImplicitConversion: true,
   });

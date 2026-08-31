@@ -14,7 +14,12 @@
     "lint": "eslint . --ext .ts",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:cov": "jest --coverage"
+    "test:cov": "jest --coverage",
+    "typeorm": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js",
+    "migration:generate": "npm run typeorm -- migration:generate -d apps/api/src/database/data-source.ts",
+    "migration:create": "npm run typeorm -- migration:create",
+    "migration:run": "npm run typeorm -- migration:run -d apps/api/src/database/data-source.ts",
+    "migration:revert": "npm run typeorm -- migration:revert -d apps/api/src/database/data-source.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.0",
@@ -22,12 +27,15 @@
     "@nestjs/platform-express": "^10.4.0",
     "@nestjs/config": "^2.7.1",
     "@nestjs/microservices": "^10.4.0",
+    "@nestjs/typeorm": "^10.4.0",
     "mqtt": "^5.0.0",
+    "pg": "^8.13.0",
     "redis": "^4.6.15",
     "reflect-metadata": "^0.1.0",
     "rxjs": "^7.6.1",
     "class-transformer": "^0.1.0",
-    "class-validator": "^0.7.0"
+    "class-validator": "^0.7.0",
+    "typeorm": "^0.3.20"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.4.0",

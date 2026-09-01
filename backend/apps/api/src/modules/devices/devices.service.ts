@@ -1,8 +1,17 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { CreateDeviceDto } from './dto/create-device.dto';
 
 @Injectable()
 export class DevicesService {
-  private readonly devices = [
+  private readonly devices: Array<{
+    id: string;
+    tenantId: string;
+    siteId: string;
+    name: string;
+    type: string;
+    status: string;
+    battery?: number;
+  }> = [
     {
       id: 'device-1',
       tenantId: 'tenant-1',
@@ -31,6 +40,21 @@ export class DevicesService {
       battery: 0,
     },
   ];
+
+  async create(tenantId: string, siteId: string, dto: CreateDeviceDto) {
+    const created = {
+      id: `device-${Date.now()}`,
+      tenantId,
+      siteId,
+      name: dto.name,
+      type: dto.type,
+      status: dto.status,
+      battery: dto.battery ?? 0,
+    };
+
+    this.devices.push(created);
+    return created;
+  }
 
   async findBySite(tenantId: string, siteId: string) {
     return this.devices.filter(

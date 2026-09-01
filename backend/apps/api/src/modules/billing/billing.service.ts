@@ -22,7 +22,9 @@ export class BillingService {
   }
 
   async listBySite(tenantId: string, siteId: string) {
-    return this.listInvoices(tenantId).map((invoice) => ({
+    const invoices = await this.listInvoices(tenantId);
+
+    return invoices.map((invoice) => ({
       ...invoice,
       siteId,
     }));

@@ -1,6 +1,6 @@
 # GREENMIND
 
-## Business Model, Revenue Plan & Prototype Strategy
+## Business Model, Revenue Plan & Legalization
 
 ### Malaysia — 2026
 

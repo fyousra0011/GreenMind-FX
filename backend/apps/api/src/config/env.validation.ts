@@ -17,75 +17,75 @@ export enum Environment {
 
 export class EnvironmentVariables {
   @IsEnum(Environment)
-  NODE_ENV: Environment;
+  NODE_ENV!: Environment;
 
   @IsNumber()
   @Min(1)
   @Max(65535)
-  PORT: number;
+  PORT!: number;
 
   @IsString()
-  APP_NAME: string;
+  APP_NAME!: string;
 
   @IsString()
-  APP_URL: string;
+  APP_URL!: string;
 
   @IsString()
-  DB_HOST: string;
+  DB_HOST!: string;
 
   @IsNumber()
-  DB_PORT: number;
+  DB_PORT!: number;
 
   @IsString()
-  DB_NAME: string;
+  DB_NAME!: string;
 
   @IsString()
-  DB_USER: string;
+  DB_USER!: string;
 
   @IsString()
-  DB_PASSWORD: string;
+  DB_PASSWORD!: string;
 
   @IsBoolean()
-  DB_SSL: boolean;
+  DB_SSL!: boolean;
 
   @IsString()
-  REDIS_HOST: string;
+  REDIS_HOST!: string;
 
   @IsNumber()
-  REDIS_PORT: number;
+  REDIS_PORT!: number;
 
   @IsString()
-  REDIS_PASSWORD: string;
+  REDIS_PASSWORD!: string;
 
   @IsNumber()
-  REDIS_DB: number;
+  REDIS_DB!: number;
 
   @IsString()
-  MQTT_BROKER_HOST: string;
+  MQTT_BROKER_HOST!: string;
 
   @IsNumber()
-  MQTT_BROKER_PORT: number;
+  MQTT_BROKER_PORT!: number;
 
   @IsString()
-  MQTT_BROKER_USERNAME: string;
+  MQTT_BROKER_USERNAME!: string;
 
   @IsString()
-  MQTT_BROKER_PASSWORD: string;
+  MQTT_BROKER_PASSWORD!: string;
 
   @IsString()
-  JWT_SECRET: string;
+  JWT_SECRET!: string;
 
   @IsString()
-  JWT_REFRESH_SECRET: string;
+  JWT_REFRESH_SECRET!: string;
 
   @IsString()
-  STRIPE_SECRET_KEY: string;
+  STRIPE_SECRET_KEY!: string;
 
   @IsString()
-  STRIPE_WEBHOOK_SECRET: string;
+  STRIPE_WEBHOOK_SECRET!: string;
 
   @IsString()
-  STRIPE_PUBLISHABLE_KEY: string;
+  STRIPE_PUBLISHABLE_KEY!: string;
 }
 
 export function validate(config: Record<string, unknown>) {

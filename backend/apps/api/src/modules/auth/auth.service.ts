@@ -1,8 +1,18 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
+import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import { RefreshTokenService } from './refresh-token.service';
+import { User } from './user.entity';
 import { UserRole } from './roles.guard';
 
 type AuthUser = {
@@ -13,9 +23,15 @@ type AuthUser = {
   roles: UserRole[];
 };
 
+const VALID_ROLES: UserRole[] = ['owner', 'admin', 'technician', 'viewer'];
+
 @Injectable()
 export class AuthService {
   constructor(
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly refreshTokenService: RefreshTokenService,
@@ -23,6 +39,41 @@ export class AuthService {
 
   private hashToken(token: string): string {
     return crypto.createHash('sha256').update(token).digest('hex');
+  }
+
+  private toAuthUser(user: User): AuthUser {
+    return {
+      id: user.id,
+      email: user.email,
+      tenantId: user.tenantId,
+      siteId: user.siteId,
+      roles: this.normalizeRoles(user.roles),
+    };
+  }
+
+  private normalizeRoles(roles?: string[] | null): UserRole[] {
+    const values = Array.isArray(roles) ? roles : [];
+    const normalized = values
+      .map((role) => String(role).trim().toLowerCase())
+      .filter((role): role is UserRole => VALID_ROLES.includes(role as UserRole));
+
+    return normalized.length > 0 ? normalized : ['viewer'];
+  }
+
+  private async ensureSiteBelongsToTenant(tenantId: string, siteId: string): Promise<void> {
+    const rows = await this.dataSource.query(
+      `SELECT tenant_id FROM sites WHERE id = $1 LIMIT 1;`,
+      [siteId],
+    );
+
+    const siteTenantId = rows?.[0]?.tenant_id;
+    if (!siteTenantId) {
+      throw new BadRequestException('Site not found');
+    }
+
+    if (siteTenantId !== tenantId) {
+      throw new BadRequestException('Site does not belong to the provided tenant');
+    }
   }
 
   private async issueAccessToken(user: AuthUser) {
@@ -58,47 +109,137 @@ export class AuthService {
     return refreshToken;
   }
 
-  async validateUser(email: string, password: string) {
-    const users: Record<string, AuthUser> = {
-      'owner@greenmind.local': {
-        id: 'user-owner',
-        email,
-        tenantId: 'tenant-1',
-        siteId: 'site-1',
-        roles: ['owner'],
+  async registerUser(input: {
+    tenantId: string;
+    siteId: string;
+    email: string;
+    password: string;
+  }) {
+    const email = input.email.trim().toLowerCase();
+
+    if (!email || !input.tenantId || !input.siteId || !input.password) {
+      throw new BadRequestException('tenantId, siteId, email, and password are required');
+    }
+
+    if (input.password.length < 8) {
+      throw new BadRequestException('Password must be at least 8 characters long');
+    }
+
+    const existingUser = await this.userRepository.findOne({ where: { email } });
+    if (existingUser) {
+      throw new ConflictException('User already exists');
+    }
+
+    await this.ensureSiteBelongsToTenant(input.tenantId, input.siteId);
+
+    const passwordHash = await bcrypt.hash(input.password, 12);
+
+    const user = this.userRepository.create({
+      tenantId: input.tenantId,
+      siteId: input.siteId,
+      email,
+      passwordHash,
+      roles: ['viewer'],
+    });
+
+    const savedUser = await this.userRepository.save(user);
+    const authUser = this.toAuthUser(savedUser);
+
+    const [accessToken, refreshToken] = await Promise.all([
+      this.issueAccessToken(authUser),
+      this.issueRefreshToken(authUser),
+    ]);
+
+    return {
+      user: {
+        id: savedUser.id,
+        email: savedUser.email,
+        tenantId: savedUser.tenantId,
+        siteId: savedUser.siteId,
+        roles: savedUser.roles,
       },
-      'admin@greenmind.local': {
-        id: 'user-admin',
-        email,
-        tenantId: 'tenant-1',
-        siteId: 'site-1',
-        roles: ['admin'],
-      },
-      'tech@greenmind.local': {
-        id: 'user-tech',
-        email,
-        tenantId: 'tenant-1',
-        siteId: 'site-1',
-        roles: ['technician'],
-      },
-      'viewer@greenmind.local': {
-        id: 'user-viewer',
-        email,
-        tenantId: 'tenant-1',
-        siteId: 'site-1',
-        roles: ['viewer'],
-      },
+      accessToken,
+      refreshToken,
+      tokenType: 'bearer',
+      expiresIn: this.configService.get<string>('JWT_EXPIRES_IN', '15m'),
     };
+  }
 
-    const user = users[email];
+  async createManagedUser(
+    input: {
+      tenantId: string;
+      siteId: string;
+      email: string;
+      password: string;
+      roles: UserRole[];
+    },
+    callerRoles: UserRole[] = [],
+  ) {
+    const email = input.email.trim().toLowerCase();
 
-    if (!user || password !== 'ChangeMe123!') {
+    if (!email || !input.tenantId || !input.siteId || !input.password) {
+      throw new BadRequestException('tenantId, siteId, email, and password are required');
+    }
+
+    const requestedRoles = this.normalizeRoles(input.roles);
+    const currentUserIsOwner = callerRoles.includes('owner');
+    const currentUserIsAdmin = callerRoles.includes('admin');
+
+    if (!currentUserIsOwner && currentUserIsAdmin) {
+      const forbiddenEscalation = requestedRoles.some(
+        (role) => role === 'owner' || role === 'admin',
+      );
+
+      if (forbiddenEscalation) {
+        throw new ForbiddenException(
+          'Admins cannot create owner or admin accounts. Only owners may do that.',
+        );
+      }
+    }
+
+    await this.ensureSiteBelongsToTenant(input.tenantId, input.siteId);
+
+    const passwordHash = await bcrypt.hash(input.password, 12);
+    const existingUser = await this.userRepository.findOne({ where: { email } });
+    if (existingUser) {
+      throw new ConflictException('User already exists');
+    }
+
+    const user = this.userRepository.create({
+      tenantId: input.tenantId,
+      siteId: input.siteId,
+      email,
+      passwordHash,
+      roles: requestedRoles,
+    });
+
+    const savedUser = await this.userRepository.save(user);
+    return {
+      id: savedUser.id,
+      email: savedUser.email,
+      tenantId: savedUser.tenantId,
+      siteId: savedUser.siteId,
+      roles: savedUser.roles,
+    };
+  }
+
+  async validateUser(email: string, password: string) {
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await this.userRepository.findOne({ where: { email: normalizedEmail } });
+
+    if (!user) {
       return null;
     }
 
+    const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+    if (!isPasswordValid) {
+      return null;
+    }
+
+    const authUser = this.toAuthUser(user);
     const [accessToken, refreshToken] = await Promise.all([
-      this.issueAccessToken(user),
-      this.issueRefreshToken(user),
+      this.issueAccessToken(authUser),
+      this.issueRefreshToken(authUser),
     ]);
 
     return {
@@ -107,7 +248,7 @@ export class AuthService {
         email: user.email,
         tenantId: user.tenantId,
         siteId: user.siteId,
-        roles: user.roles,
+        roles: this.normalizeRoles(user.roles),
       },
       accessToken,
       refreshToken,

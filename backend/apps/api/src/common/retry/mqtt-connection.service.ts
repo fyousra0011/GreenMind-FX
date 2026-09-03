@@ -1,11 +1,17 @@
-import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as mqtt from 'mqtt';
+import { CircuitBreaker } from './circuit-breaker.util';
 import { retryWithExponentialBackoff } from './retry.util';
 
 @Injectable()
 export class MqttConnectionService implements OnModuleDestroy {
   private readonly logger = new Logger(MqttConnectionService.name);
+  private readonly breaker = new CircuitBreaker({
+    failureThreshold: 3,
+    windowMs: 30_000,
+    resetTimeoutMs: 15_000,
+  });
   private client: mqtt.MqttClient | null = null;
   private connectionPromise: Promise<mqtt.MqttClient> | null = null;
 
@@ -88,32 +94,37 @@ export class MqttConnectionService implements OnModuleDestroy {
   }
 
   async publish(topic: string, payload: Record<string, unknown>): Promise<void> {
-    const client = await this.ensureConnected();
+    return this.breaker.execute(async () => {
+      const client = await this.ensureConnected();
 
-    await retryWithExponentialBackoff(
-      async () => {
-        await new Promise<void>((resolve, reject) => {
-          const message = JSON.stringify(payload);
-          client.publish(topic, message, { qos: 1 }, (error) => {
-            if (error) {
-              reject(error);
-              return;
-            }
-            resolve();
+      await retryWithExponentialBackoff(
+        async () => {
+          await new Promise<void>((resolve, reject) => {
+            const message = JSON.stringify(payload);
+            client.publish(topic, message, { qos: 1 }, (error) => {
+              if (error) {
+                reject(error);
+                return;
+              }
+              resolve();
+            });
           });
-        });
-      },
-      {
-        maxRetries: 2,
-        baseDelayMs: 150,
-        maxDelayMs: 1000,
-        shouldRetry: (error) => Boolean(error),
-        onRetry: (attempt, error, delayMs) => {
-          this.logger.warn(
-            `MQTT message publish retry ${attempt} after ${delayMs}ms for topic ${topic}. Error: ${String(error)}`,
-          );
         },
-      },
-    );
+        {
+          maxRetries: 2,
+          baseDelayMs: 150,
+          maxDelayMs: 1000,
+          shouldRetry: (error) => Boolean(error),
+          onRetry: (attempt, error, delayMs) => {
+            this.logger.warn(
+              `MQTT message publish retry ${attempt} after ${delayMs}ms for topic ${topic}. Error: ${String(error)}`,
+            );
+          },
+        },
+      );
+    }, async () => {
+      this.logger.warn(`MQTT circuit open for topic ${topic}: device offline / automation paused.`);
+      throw new ServiceUnavailableException('Device offline / automation paused');
+    });
   }
 }
